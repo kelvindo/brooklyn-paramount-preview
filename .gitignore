@@ -1,2 +1,5 @@
 env/
+data/config.py
 data/
+.ipynb_checkpoints/
+__pycache__/
