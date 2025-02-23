@@ -1,5 +1,6 @@
 import requests
 import json
+import csv 
 
 graphql_endpoint = "https://api.livenation.com/graphql"
 
@@ -142,6 +143,21 @@ while True:
     except json.JSONDecodeError as e:
         print(f"JSON decoding error: {e}")
         break
+
+# After collecting all shows, before the print loop
+csv_filename = 'data/brooklyn_paramount_shows.csv'
+try:
+    with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ['title', 'date', 'ticket_url']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        
+        writer.writeheader()
+        for show in all_shows:
+            writer.writerow(show)
+    
+    print(f"Data exported to {csv_filename}")
+except IOError as e:
+    print(f"Error writing to CSV file: {e}")
 
 for show in all_shows:
     print(f"Title: {show['title']}")
