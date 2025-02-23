@@ -3,3 +3,5 @@ data/config.py
 data/
 .ipynb_checkpoints/
 __pycache__/
+keys.env
+.cache
