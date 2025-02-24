@@ -8,6 +8,8 @@ let accessToken = null;
 let deviceId = null;
 let player = null;  // Spotify Player instance
 let currentArtistId = null; //track currently playing artist
+let currentTopTracks = [];  // Store the list of top tracks
+let currentTrackIndex = 0;  // Keep track of which song we're on
 
 // --- Helper Functions ---
 function createEl(tag, attributes = {}, text = '') {
@@ -214,7 +216,59 @@ async function playTrack(trackUri) {
     }
 }
 
+// Add these functions after the playTrack function
+async function skipForward() {
+    if (!accessToken || !deviceId) {
+        console.error("Not authenticated or no device ID.");
+        return;
+    }
 
+    try {
+        // First get current playback state
+        const stateResponse = await fetch('https://api.spotify.com/v1/me/player', {
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+        
+        if (!stateResponse.ok) {
+            throw new Error(`Failed to get playback state: ${stateResponse.status}`);
+        }
+        
+        const state = await stateResponse.json();
+        const newPosition = state.progress_ms + 20000; // Add 20 seconds (20000ms)
+        
+        // Seek to new position
+        const response = await fetch(`https://api.spotify.com/v1/me/player/seek?position_ms=${newPosition}&device_id=${deviceId}`, {
+            method: 'PUT',
+            headers: {
+                'Authorization': `Bearer ${accessToken}`
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to skip forward: ${response.status}`);
+        }
+    } catch (error) {
+        console.error("Error skipping forward:", error);
+    }
+}
+
+async function nextTrack() {
+    if (!accessToken || !deviceId || currentTopTracks.length === 0) {
+        console.error("Not authenticated, no device ID, or no tracks loaded.");
+        return;
+    }
+
+    try {
+        // Increment index and wrap around if we reach the end
+        currentTrackIndex = (currentTrackIndex + 1) % currentTopTracks.length;
+        // Play the next track
+        await playTrack(currentTopTracks[currentTrackIndex].uri);
+    } catch (error) {
+        console.error("Error playing next track:", error);
+    }
+}
 
 // --- Display Artists and Tracks (Modified) ---
 async function displayArtistsAndTracks() {
@@ -222,8 +276,20 @@ async function displayArtistsAndTracks() {
     if (!data) return;
 
     const artistContainer = document.getElementById('artist-container');
-    const artistMap = {};
+    
+    // Add playback controls container
+    const controlsContainer = createEl('div', { class: 'playback-controls' });
+    const skipForwardButton = createEl('button', { class: 'control-button' }, 'Skip 20s');
+    const nextTrackButton = createEl('button', { class: 'control-button' }, 'Next Song');
+    
+    skipForwardButton.addEventListener('click', skipForward);
+    nextTrackButton.addEventListener('click', nextTrack);
+    
+    controlsContainer.appendChild(skipForwardButton);
+    controlsContainer.appendChild(nextTrackButton);
+    artistContainer.appendChild(controlsContainer);
 
+    const artistMap = {};
     for (const artist of data.artists) {
         artistMap[artist.id] = artist;
     }
@@ -270,7 +336,6 @@ async function displayArtistsAndTracks() {
 
             // --- Playback Logic ---
             if (!isExpanded) { // Only play if we're expanding, not collapsing
-                // Get top tracks for the artist
                 try {
                     const response = await fetch(`https://api.spotify.com/v1/artists/${show.artistId}/top-tracks?market=US`, {
                         headers: {
@@ -284,13 +349,14 @@ async function displayArtistsAndTracks() {
 
                     const topTracksData = await response.json();
                     if (topTracksData.tracks && topTracksData.tracks.length > 0) {
-                        // Play the first top track
-                        const firstTrackUri = topTracksData.tracks[0].uri;
-                        await playTrack(firstTrackUri);  // Await the playTrack function
+                        // Store the full list of tracks and reset index
+                        currentTopTracks = topTracksData.tracks;
+                        currentTrackIndex = 0;
+                        // Play the first track
+                        await playTrack(currentTopTracks[currentTrackIndex].uri);
                     } else {
                         console.log("No top tracks found for this artist.");
                     }
-
                 } catch (error) {
                     console.error("Error fetching top tracks:", error);
                 }
