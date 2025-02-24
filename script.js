@@ -1,7 +1,7 @@
 // --- Configuration ---
 const CLIENT_ID = "fee1a3b5004a49ba9ae8b27253252942";  // Replace with your Client ID
-const REDIRECT_URI = "http://localhost:8001"; // IMPORTANT: Must match your app settings, no trailing slash
-const AUTH_ENDPOINT = "http://localhost:8000/auth";  // Endpoint on our simple auth server.
+const REDIRECT_URI = window.location.origin + "/"; // Dynamically get base URL, add trailing slash
+const AUTH_ENDPOINT = "/.netlify/functions/auth"; // Path to your Netlify Function
 
 // --- Global Variables ---
 let accessToken = null;

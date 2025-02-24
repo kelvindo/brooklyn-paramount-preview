@@ -5,3 +5,5 @@ data/
 __pycache__/
 keys.env
 .cache
+# Local Netlify folder
+.netlify
