@@ -7,3 +7,5 @@ keys.env
 .cache
 # Local Netlify folder
 .netlify
+node_modules/
+package-lock.json
