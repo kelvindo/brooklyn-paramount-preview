@@ -89,16 +89,22 @@ def play_next_track(tracks: List[Dict], track_index: int, device_id: str, random
     
     try:
         print(f"Now playing: {selected_track['name']} by {selected_track['artist']} (Album: {selected_track['album']})")
-        # Start playback from beginning first
+        # Start playback to load the track
         sp.start_playback(uris=[selected_track['uri']], device_id=device_id)
         
         if random_start:
-            # Wait a moment for playback to start
-            time.sleep(0.1)
+            # Immediately pause to avoid giving away the beginning
+            sp.pause_playback(device_id=device_id)
+            
+            # Wait for the track to load
+            time.sleep(1)
             
             # Seek to a random position (10 seconds to 2 minutes into the song)
             random_position = random.randint(10000, 120000)  # 10-120 seconds in milliseconds
             sp.seek_track(random_position, device_id=device_id)
+            
+            # Resume playback from the random position
+            sp.start_playback(device_id=device_id)
             
             print(f"Seeking to {random_position // 1000} seconds into the track")
         else:
