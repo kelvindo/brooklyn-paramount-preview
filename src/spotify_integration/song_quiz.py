@@ -1,0 +1,161 @@
+import spotipy
+from spotipy.oauth2 import SpotifyOAuth
+import time
+import random
+import re
+import sys
+import os
+from typing import List, Dict
+
+SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
+SPOTIFY_CLIENT_SECRET = os.getenv('SPOTIFY_CLIENT_SECRET')
+SPOTIFY_REDIRECT_URI = 'http://localhost:3000/callback'
+
+# Initialize Spotify client
+sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET,
+    redirect_uri=SPOTIFY_REDIRECT_URI,
+    scope="user-modify-playback-state user-read-playback-state user-read-currently-playing"
+))
+
+
+def extract_playlist_id(playlist_url: str) -> str:
+    """Extract playlist ID from Spotify playlist URL."""
+    # Pattern to match Spotify playlist URLs
+    pattern = r'https://open\.spotify\.com/playlist/([a-zA-Z0-9]+)'
+    match = re.search(pattern, playlist_url)
+    
+    if match:
+        return match.group(1)
+    else:
+        raise ValueError("Invalid Spotify playlist URL format")
+
+
+def get_playlist_tracks(playlist_id: str) -> List[Dict]:
+    """Get all tracks from a Spotify playlist."""
+    tracks = []
+    results = sp.playlist_tracks(playlist_id)
+    
+    # Handle pagination to get all tracks
+    while results:
+        for item in results['items']:
+            if item['track'] and item['track']['id']:  # Ensure track exists and has ID
+                tracks.append({
+                    'id': item['track']['id'],
+                    'uri': item['track']['uri'],
+                    'name': item['track']['name'],
+                    'artist': ', '.join([artist['name'] for artist in item['track']['artists']])
+                })
+        
+        # Get next page if exists
+        if results['next']:
+            results = sp.next(results)
+        else:
+            break
+    
+    return tracks
+
+
+def get_device_id():
+    """Gets the ID of the first active Spotify device, with retries."""
+    device_id = None
+    attempts = 0
+    max_attempts = 5
+
+    while attempts < max_attempts and not device_id:
+        devices = sp.devices()
+        if devices and devices['devices']:
+            device_id = devices['devices'][0]['id']
+            break
+        else:
+            print("No active devices found. Please open Spotify on a device and try again...")
+            time.sleep(2)
+            attempts += 1
+    
+    return device_id
+
+
+def play_random_track(tracks: List[Dict], device_id: str) -> Dict:
+    """Play a random track from the list and return the selected track."""
+    if not tracks:
+        print("No tracks available to play.")
+        return None
+    
+    # Select random track
+    selected_track = random.choice(tracks)
+    
+    try:
+        print(f"Now playing: {selected_track['name']} by {selected_track['artist']}")
+        sp.start_playback(uris=[selected_track['uri']], device_id=device_id)
+        return selected_track
+    except spotipy.SpotifyException as e:
+        print(f"Error playing track {selected_track['name']}: {e}")
+        if e.http_status == 404:
+            print("Playback error. Device likely disconnected.")
+            return None
+        return selected_track
+
+
+def main():
+    """Main function to run the song quiz."""
+    if len(sys.argv) != 2:
+        print("Usage: python song_quiz.py <spotify_playlist_url>")
+        print("Example: python song_quiz.py https://open.spotify.com/playlist/1lsrxqfcuedzBiFTUJXsgb")
+        sys.exit(1)
+    
+    playlist_url = sys.argv[1]
+    
+    try:
+        # Extract playlist ID from URL
+        playlist_id = extract_playlist_id(playlist_url)
+        print(f"Extracted playlist ID: {playlist_id}")
+        
+        # Get all tracks from playlist
+        print("Fetching playlist tracks...")
+        tracks = get_playlist_tracks(playlist_id)
+        
+        if not tracks:
+            print("No playable tracks found in the playlist.")
+            sys.exit(1)
+        
+        print(f"Found {len(tracks)} tracks in the playlist.")
+        
+        # Get active device
+        device_id = get_device_id()
+        if not device_id:
+            print("No active Spotify device found. Please open Spotify on a device and try again.")
+            sys.exit(1)
+        
+        print("Starting song quiz! Press Enter to skip to a random song, 'q' to quit.")
+        
+        # Play first random track
+        current_track = play_random_track(tracks, device_id)
+        
+        # Main game loop
+        while True:
+            user_input = input("Press Enter for next random song, or 'q' to quit: ").strip().lower()
+            
+            if user_input == 'q':
+                print("Thanks for playing!")
+                break
+            elif user_input == '':  # Enter key pressed
+                current_track = play_random_track(tracks, device_id)
+                if current_track is None:  # Device disconnected
+                    break
+            else:
+                print("Invalid input. Press Enter for next song or 'q' to quit.")
+    
+    except ValueError as e:
+        print(f"Error: {e}")
+        sys.exit(1)
+    except spotipy.SpotifyException as e:
+        print(f"Spotify API error: {e}")
+        sys.exit(1)
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
