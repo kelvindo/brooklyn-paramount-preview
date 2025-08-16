@@ -46,7 +46,8 @@ def get_playlist_tracks(playlist_id: str) -> List[Dict]:
                     'id': item['track']['id'],
                     'uri': item['track']['uri'],
                     'name': item['track']['name'],
-                    'artist': ', '.join([artist['name'] for artist in item['track']['artists']])
+                    'artist': ', '.join([artist['name'] for artist in item['track']['artists']]),
+                    'album': item['track']['album']['name']
                 })
         
         # Get next page if exists
@@ -77,17 +78,17 @@ def get_device_id():
     return device_id
 
 
-def play_random_track(tracks: List[Dict], device_id: str, random_start: bool = True) -> Dict:
-    """Play a random track from the list and return the selected track."""
-    if not tracks:
-        print("No tracks available to play.")
+def play_next_track(tracks: List[Dict], track_index: int, device_id: str, random_start: bool = True) -> Dict:
+    """Play the next track from the shuffled list and return the selected track."""
+    if not tracks or track_index >= len(tracks):
+        print("No more tracks available to play.")
         return None
     
-    # Select random track
-    selected_track = random.choice(tracks)
+    # Get the next track from the shuffled list
+    selected_track = tracks[track_index]
     
     try:
-        print(f"Now playing: {selected_track['name']} by {selected_track['artist']}")
+        print(f"Now playing: {selected_track['name']} by {selected_track['artist']} (Album: {selected_track['album']})")
         # Start playback from beginning first
         sp.start_playback(uris=[selected_track['uri']], device_id=device_id)
         
@@ -139,6 +140,10 @@ def main():
         
         print(f"Found {len(tracks)} tracks in the playlist.")
         
+        # Shuffle the tracks to avoid repeats
+        random.shuffle(tracks)
+        track_index = 0
+        
         # Get active device
         device_id = get_device_id()
         if not device_id:
@@ -147,22 +152,29 @@ def main():
         
         mode_text = "random position" if random_start else "beginning"
         print(f"Starting song quiz in '{args.mode}' mode! Songs will start from {mode_text}.")
-        print("Press Enter to skip to a random song, 'q' to quit.")
+        print("Press Enter to skip to the next song, 'q' to quit.")
         
-        # Play first random track
-        current_track = play_random_track(tracks, device_id, random_start)
+        # Play first track
+        current_track = play_next_track(tracks, track_index, device_id, random_start)
+        track_index += 1
         
         # Main game loop
         while True:
-            user_input = input("Press Enter for next random song, or 'q' to quit: ").strip().lower()
+            if track_index >= len(tracks):
+                print("You've heard all songs in the playlist! Reshuffling...")
+                random.shuffle(tracks)
+                track_index = 0
+            
+            user_input = input("Press Enter for next song, or 'q' to quit: ").strip().lower()
             
             if user_input == 'q':
                 print("Thanks for playing!")
                 break
             elif user_input == '':  # Enter key pressed
-                current_track = play_random_track(tracks, device_id, random_start)
+                current_track = play_next_track(tracks, track_index, device_id, random_start)
                 if current_track is None:  # Device disconnected
                     break
+                track_index += 1
             else:
                 print("Invalid input. Press Enter for next song or 'q' to quit.")
     
