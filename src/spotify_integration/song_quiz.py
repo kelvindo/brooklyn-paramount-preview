@@ -5,6 +5,7 @@ import random
 import re
 import sys
 import os
+import argparse
 from typing import List, Dict
 
 SPOTIFY_CLIENT_ID = os.getenv('SPOTIFY_CLIENT_ID')
@@ -76,7 +77,7 @@ def get_device_id():
     return device_id
 
 
-def play_random_track(tracks: List[Dict], device_id: str) -> Dict:
+def play_random_track(tracks: List[Dict], device_id: str, random_start: bool = True) -> Dict:
     """Play a random track from the list and return the selected track."""
     if not tracks:
         print("No tracks available to play.")
@@ -87,7 +88,21 @@ def play_random_track(tracks: List[Dict], device_id: str) -> Dict:
     
     try:
         print(f"Now playing: {selected_track['name']} by {selected_track['artist']}")
+        # Start playback from beginning first
         sp.start_playback(uris=[selected_track['uri']], device_id=device_id)
+        
+        if random_start:
+            # Wait a moment for playback to start
+            time.sleep(0.1)
+            
+            # Seek to a random position (10 seconds to 2 minutes into the song)
+            random_position = random.randint(10000, 120000)  # 10-120 seconds in milliseconds
+            sp.seek_track(random_position, device_id=device_id)
+            
+            print(f"Seeking to {random_position // 1000} seconds into the track")
+        else:
+            print("Playing from the beginning")
+        
         return selected_track
     except spotipy.SpotifyException as e:
         print(f"Error playing track {selected_track['name']}: {e}")
@@ -99,12 +114,15 @@ def play_random_track(tracks: List[Dict], device_id: str) -> Dict:
 
 def main():
     """Main function to run the song quiz."""
-    if len(sys.argv) != 2:
-        print("Usage: python song_quiz.py <spotify_playlist_url>")
-        print("Example: python song_quiz.py https://open.spotify.com/playlist/1lsrxqfcuedzBiFTUJXsgb")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description='Spotify Song Quiz - Play random songs from a playlist')
+    parser.add_argument('playlist_url', help='Spotify playlist URL')
+    parser.add_argument('--mode', choices=['beginning', 'random'], default='random',
+                        help='Start songs from beginning or random position (default: random)')
     
-    playlist_url = sys.argv[1]
+    args = parser.parse_args()
+    
+    playlist_url = args.playlist_url
+    random_start = args.mode == 'random'
     
     try:
         # Extract playlist ID from URL
@@ -127,10 +145,12 @@ def main():
             print("No active Spotify device found. Please open Spotify on a device and try again.")
             sys.exit(1)
         
-        print("Starting song quiz! Press Enter to skip to a random song, 'q' to quit.")
+        mode_text = "random position" if random_start else "beginning"
+        print(f"Starting song quiz in '{args.mode}' mode! Songs will start from {mode_text}.")
+        print("Press Enter to skip to a random song, 'q' to quit.")
         
         # Play first random track
-        current_track = play_random_track(tracks, device_id)
+        current_track = play_random_track(tracks, device_id, random_start)
         
         # Main game loop
         while True:
@@ -140,7 +160,7 @@ def main():
                 print("Thanks for playing!")
                 break
             elif user_input == '':  # Enter key pressed
-                current_track = play_random_track(tracks, device_id)
+                current_track = play_random_track(tracks, device_id, random_start)
                 if current_track is None:  # Device disconnected
                     break
             else:
