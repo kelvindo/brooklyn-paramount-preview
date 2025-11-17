@@ -1,8 +1,10 @@
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import os
-import csv
-from typing import List, Dict, Set
+import json
+import argparse
+from datetime import datetime
+from typing import List, Set
 
 # --- Configuration ---
 SPOTIFY_CLIENT_ID = os.environ.get('SPOTIFY_CLIENT_ID')
@@ -22,21 +24,105 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
 ))
 
 
-def load_track_ids(filename: str) -> List[str]:
-    """Loads track IDs from a CSV file."""
+def get_latest_combined_data_filename() -> str:
+    """
+    Get the latest combined_data JSON filename in format: combined_data_YY-MM-DD.json
+    If today's file doesn't exist, find the most recent one.
+    """
+    data_final_dir = 'data/final'
+    if not os.path.exists(data_final_dir):
+        raise FileNotFoundError(f"Directory '{data_final_dir}' does not exist. Run combine_data.py first.")
+    
+    today = datetime.now()
+    date_str = today.strftime('%y-%m-%d')
+    filename = f'combined_data_{date_str}.json'
+    filepath = os.path.join(data_final_dir, filename)
+    
+    if os.path.exists(filepath):
+        return filepath
+    
+    # If today's file doesn't exist, try to find the most recent one
+    print(f"File {filename} not found. Searching for most recent combined_data JSON file...")
+    json_files = [f for f in os.listdir(data_final_dir) if f.startswith('combined_data_') and f.endswith('.json')]
+    
+    if not json_files:
+        raise FileNotFoundError(f"No combined_data JSON files found in {data_final_dir}")
+    
+    # Sort by filename (which includes date) and get the latest
+    json_files.sort(reverse=True)
+    latest_file = os.path.join(data_final_dir, json_files[0])
+    print(f"Using file: {latest_file}")
+    return latest_file
+
+
+def load_track_ids_from_combined_data(filename: str, first_artist_only: bool = False) -> List[str]:
+    """
+    Loads track IDs from combined data JSON file.
+    
+    Args:
+        filename: Path to combined_data JSON file
+        first_artist_only: If True, only include tracks from the first artist of each show.
+                          If False, include tracks from all artists.
+    
+    Returns:
+        List of unique track IDs (deduplicated)
+    """
     track_ids = []
+    seen_shows: Set[str] = set()
+    seen_artists: Set[str] = set()
+    
     try:
         with open(filename, 'r', encoding='utf-8') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                track_ids.append(row['track_id'])  # 'track_id' is the column
+            shows = json.load(file)
+            
+            for show in shows:
+                show_title = show.get('title', '')
+                
+                # Skip duplicate shows (by title)
+                if show_title in seen_shows:
+                    continue
+                seen_shows.add(show_title)
+                
+                artists = show.get('artists', [])
+                
+                # If first_artist_only, only process the first artist
+                artists_to_process = [artists[0]] if first_artist_only and artists else artists
+                
+                for artist in artists_to_process:
+                    spotify_id = artist.get('spotify_id')
+                    
+                    # Skip artists without Spotify data
+                    if not spotify_id:
+                        continue
+                    
+                    # Skip duplicate artists (by spotify_id)
+                    if spotify_id in seen_artists:
+                        continue
+                    seen_artists.add(spotify_id)
+                    
+                    # Collect track IDs from this artist
+                    tracks = artist.get('tracks', [])
+                    for track in tracks:
+                        track_id = track.get('track_id')
+                        if track_id:
+                            track_ids.append(track_id)
+    
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
         return []
-    except KeyError as e:
-        print(f"Error: Required column {e} not found in CSV.")
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in file '{filename}': {e}")
         return []
-    return track_ids
+    
+    # Remove duplicate track IDs while preserving order
+    seen_tracks: Set[str] = set()
+    unique_track_ids = []
+    for track_id in track_ids:
+        if track_id not in seen_tracks:
+            seen_tracks.add(track_id)
+            unique_track_ids.append(track_id)
+    
+    return unique_track_ids
 
 
 def get_or_create_playlist(playlist_name: str) -> str:
@@ -86,13 +172,36 @@ def clear_playlist(sp, playlist_id):
         print(f"Error clearing playlist: {e}")
 
 def main():
-    input_file = 'data/processed/track_list.csv'
-    track_ids = load_track_ids(input_file)
+    parser = argparse.ArgumentParser(
+        description='Sync tracks from combined data to Spotify playlist',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Add tracks from all artists
+  python tracks_to_playlist_sync.py
+  
+  # Add tracks from first artist only (headliner)
+  python tracks_to_playlist_sync.py --first-artist-only
+        """
+    )
+    parser.add_argument(
+        '--first-artist-only',
+        action='store_true',
+        help='Only include tracks from the first artist of each show (headliner only)'
+    )
+    
+    args = parser.parse_args()
+    
+    input_file = get_latest_combined_data_filename()
+    track_ids = load_track_ids_from_combined_data(input_file, first_artist_only=args.first_artist_only)
 
     if not track_ids:
         print("No track IDs found. Exiting.")
         return
 
+    mode = "first artist only" if args.first_artist_only else "all artists"
+    print(f"Loaded {len(track_ids)} unique track IDs from {input_file} ({mode} mode)")
+    
     playlist_id = get_or_create_playlist(PLAYLIST_NAME)
     
     # Clear existing tracks from playlist

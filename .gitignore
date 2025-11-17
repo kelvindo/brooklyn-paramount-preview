@@ -1,9 +1,11 @@
 env/
+.venv/
 data/config.py
 data/
 .ipynb_checkpoints/
 __pycache__/
 keys.env
+.env
 .cache
 # Local Netlify folder
 .netlify

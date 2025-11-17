@@ -5,11 +5,11 @@ An automated pipeline for discovering upcoming concerts at Brooklyn Paramount an
 ## About
 
 This repository contains a complete workflow for:
-1. **Scraping** upcoming show data from Brooklyn Paramount's website via their GraphQL API
-2. **Processing** show titles to extract likely artist names (manual step using ChatGPT)
-3. **Matching** artists to their Spotify profiles and retrieving metadata
-4. **Collecting** top tracks from each artist
-5. **Synchronizing** all tracks to a curated Spotify playlist called "Brooklyn Paramount"
+1. **Scraping** upcoming show data from Brooklyn Paramount's website via their GraphQL API (including artist names)
+2. **Matching** artists to their Spotify profiles and retrieving metadata
+3. **Collecting** top tracks from each artist
+4. **Combining** all data into a unified JSON structure
+5. **Synchronizing** tracks to a curated Spotify playlist called "Brooklyn Paramount"
 
 The pipeline helps music discovery by automatically creating playlists of artists you'll be able to see live at Brooklyn Paramount, making it easy to familiarize yourself with their music before attending shows.
 
@@ -18,16 +18,15 @@ The pipeline helps music discovery by automatically creating playlists of artist
 ### Core Pipeline Scripts
 
 **Scraping**
-- `src/scraping/brooklyn_paramount_scraper.py` - Scrapes Brooklyn Paramount's GraphQL API to fetch upcoming show data including titles, dates, and ticket URLs
+- `src/scraping/brooklyn_paramount_scraper.py` - Scrapes Brooklyn Paramount's GraphQL API to fetch upcoming show data including titles, dates, ticket URLs, and artist information
 
 **Spotify Integration**
 - `src/spotify_integration/artist_scraper.py` - Searches Spotify for artists and saves their metadata (ID, name, popularity, followers, genres)
 - `src/spotify_integration/track_scraper.py` - Fetches top tracks for each artist found on Spotify
 - `src/spotify_integration/tracks_to_playlist_sync.py` - Creates/updates a Spotify playlist with all collected tracks
 
-**Processing Utilities**
-- `src/processing/artist_extractor.py` - Utilities for extracting artist names from show titles
-- `src/processing/title_processor.py` - Text processing utilities for cleaning show titles
+**Data Processing**
+- `src/processing/combine_data.py` - Combines show, artist, and track data into a single unified JSON file
 
 ### Supporting Files
 - `src/spotify_integration/spotify_client.py` - Spotify API client configuration
@@ -38,37 +37,43 @@ The pipeline helps music discovery by automatically creating playlists of artist
 ### Directory Structure
 ```
 data/
-├── brooklyn_paramount_shows.csv         # Raw scraped show data
+├── raw/
+│   └── brooklyn_paramount_shows_YY-MM-DD.json  # Raw scraped show data with artists
 ├── processed/
-│   ├── show_title_to_artist.csv        # Manual mapping of show titles to artist names
-│   ├── artist_list.csv                 # Spotify artist metadata
-│   └── track_list.csv                  # Top tracks for all artists
-├── raw/                                 # Raw data backups
-├── cache/                              # Cached API responses
-└── final/                              # Final processed datasets
+│   ├── artist_list_YY-MM-DD.json      # Spotify artist metadata
+│   └── track_list_YY-MM-DD.json      # Top tracks for all artists
+├── final/
+│   └── combined_data_YY-MM-DD.json    # Combined show, artist, and track data
+└── cache/                              # Cached API responses
 ```
 
 ### Key Data Files
 
-**`data/brooklyn_paramount_shows.csv`**
+**`data/raw/brooklyn_paramount_shows_YY-MM-DD.json`**
 - **Source**: Brooklyn Paramount GraphQL API
-- **Contains**: `title`, `date`, `ticket_url`
-- **Purpose**: Raw show data from venue website
+- **Contains**: `title`, `date`, `ticket_url`, `artists` (array with `name`, `image_url`, `genre`)
+- **Purpose**: Raw show data from venue website with artist information
 
-**`data/processed/show_title_to_artist.csv`**
-- **Source**: Manual creation (ChatGPT assisted)
-- **Contains**: `Show Title`, `Artist`
-- **Purpose**: Maps complex show titles to likely artist names for Spotify search
-
-**`data/processed/artist_list.csv`**
+**`data/processed/artist_list_YY-MM-DD.json`**
 - **Source**: Spotify Web API
-- **Contains**: `show_title`, `search_term`, `id`, `name`, `popularity`, `followers`, `genres`
+- **Contains**: Array of artist objects with `show_title`, `search_term`, `id`, `name`, `popularity`, `followers`, `genres`
 - **Purpose**: Spotify artist metadata for matched artists
+- **Format**: JSON array, automatically uses date from input file
 
-**`data/processed/track_list.csv`**
+**`data/processed/track_list_YY-MM-DD.json`**
 - **Source**: Spotify Web API
-- **Contains**: `artist_id`, `artist_name`, `track_id`, `track_name`, `popularity`, `duration_ms`
+- **Contains**: Array of track objects with `artist_id`, `artist_name`, `track_id`, `track_name`, `popularity`, `duration_ms`
 - **Purpose**: Top tracks from all artists for playlist creation
+- **Format**: JSON array, automatically uses date from input file
+
+**`data/final/combined_data_YY-MM-DD.json`**
+- **Source**: Combined from shows, artists, and tracks
+- **Contains**: Array of show objects, each containing:
+  - Show metadata (`title`, `date`, `ticket_url`)
+  - Artists array with original data (`name`, `image_url`, `genre`) and Spotify metadata (`spotify_id`, `popularity`, `followers`, `spotify_genres`)
+  - Tracks array nested within each artist
+- **Purpose**: Unified data structure for easy access to all show, artist, and track information
+- **Format**: JSON array, uses date from input files
 
 ## Usage
 
@@ -96,55 +101,61 @@ data/
 ```bash
 python src/scraping/brooklyn_paramount_scraper.py
 ```
-- **Output**: `data/brooklyn_paramount_shows.csv`
-- **What it does**: Fetches all upcoming shows from Brooklyn Paramount's API
+- **Output**: `data/raw/brooklyn_paramount_shows_YY-MM-DD.json`
+- **What it does**: Fetches all upcoming shows from Brooklyn Paramount's API, including artist names, images, and genres
 - **Runtime**: ~30 seconds
 
-#### 2. Create Artist Mapping (Manual Step)
-- **Input**: `data/brooklyn_paramount_shows.csv`
-- **Output**: `data/processed/show_title_to_artist.csv`
-- **Process**: 
-  1. Review show titles in the CSV
-  2. Use ChatGPT or manual research to extract likely artist names
-  3. Create a CSV with columns: `Show Title`, `Artist`
-  4. Handle complex cases like "Artist A + Artist B", tribute bands, etc.
-
-**Example mapping:**
-```csv
-Show Title,Artist
-"Vampire Weekend with Special Guest Courtney Barnett",Vampire Weekend
-"The 1975: Being Funny In A Foreign Language Tour",The 1975
-"An Evening with David Byrne",David Byrne
-```
-
-#### 3. Scrape Spotify Artist Data
+#### 2. Scrape Spotify Artist Data
 ```bash
 python src/spotify_integration/artist_scraper.py
 ```
-- **Input**: `data/processed/show_title_to_artist.csv`
-- **Output**: `data/processed/artist_list.csv`
-- **What it does**: Searches Spotify for each artist and saves metadata
+- **Input**: Automatically finds latest `data/raw/brooklyn_paramount_shows_YY-MM-DD.json`
+- **Output**: `data/processed/artist_list_YY-MM-DD.json` (uses date from input file)
+- **What it does**: 
+  - Extracts artist names from scraped shows
+  - Searches Spotify for each artist and saves metadata
+  - Automatically deduplicates artists (same artist appearing in multiple shows)
 - **Runtime**: ~1 minute for 60 artists
 
-#### 4. Collect Artist Top Tracks
+#### 3. Collect Artist Top Tracks
 ```bash
 python src/spotify_integration/track_scraper.py
 ```
-- **Input**: `data/processed/artist_list.csv`
-- **Output**: `data/processed/track_list.csv`
-- **What it does**: Fetches top 10 tracks for each artist found on Spotify
+- **Input**: Automatically finds latest `data/processed/artist_list_YY-MM-DD.json`
+- **Output**: `data/processed/track_list_YY-MM-DD.json` (uses date from input file)
+- **What it does**: 
+  - Fetches top 10 tracks for each unique artist found on Spotify
+  - Only processes distinct artists (no duplicate API calls)
 - **Runtime**: ~2 minutes for 60 artists
+
+#### 4. Combine All Data
+```bash
+python src/processing/combine_data.py
+```
+- **Input**: Automatically finds latest files from `data/raw/` and `data/processed/`
+- **Output**: `data/final/combined_data_YY-MM-DD.json`
+- **What it does**: 
+  - Combines show, artist, and track data into a unified structure
+  - Links artists to their shows and tracks
+  - Preserves all metadata from each source
+- **Runtime**: <5 seconds
 
 #### 5. Sync to Spotify Playlist
 ```bash
+# Add tracks from all artists (default)
 python src/spotify_integration/tracks_to_playlist_sync.py
+
+# Add tracks from first artist only (headliner)
+python src/spotify_integration/tracks_to_playlist_sync.py --first-artist-only
 ```
-- **Input**: `data/processed/track_list.csv`
+- **Input**: Automatically finds latest `data/final/combined_data_YY-MM-DD.json`
 - **Output**: Spotify playlist "Brooklyn Paramount"
 - **What it does**: 
   - Creates playlist if it doesn't exist
   - Clears existing tracks
-  - Adds all collected tracks (handles 100-track API limit)
+  - Adds collected tracks (handles 100-track API limit)
+  - Automatically deduplicates shows, artists, and tracks
+  - Option to include only headliners (`--first-artist-only` flag)
 - **Runtime**: ~30 seconds for 500+ tracks
 
 ### Authentication Notes
@@ -158,12 +169,21 @@ python src/spotify_integration/tracks_to_playlist_sync.py
 ### Troubleshooting
 
 **Common Issues:**
-- **"No artist found"**: Artist name in mapping file doesn't match Spotify search
+- **"No artist found"**: Artist name from API doesn't match Spotify search (may need manual adjustment)
 - **Rate limiting**: Scripts include delays to respect API limits
 - **Authentication errors**: Check environment variables and re-authenticate if needed
-- **Empty playlist**: Verify track IDs in `track_list.csv` are valid
+- **Empty playlist**: Verify track IDs in combined data are valid
+- **File not found**: Scripts automatically find the latest dated files, but ensure previous steps have run successfully
+- **Combined data not found**: Run `combine_data.py` before syncing to playlist
 
 **Data Validation:**
-- Check row counts between pipeline steps
-- Verify artist names match between mapping and Spotify results
+- Check file counts between pipeline steps (all scripts use date-stamped filenames)
+- Verify artist names from scraped data match Spotify results
 - Confirm track IDs are valid Spotify URIs
+- All data files are now in JSON format for better structure preservation
+- Combined data file provides a single source of truth for all show, artist, and track information
+
+**Playlist Options:**
+- **Default mode**: Includes tracks from all artists across all shows
+- **`--first-artist-only` mode**: Only includes tracks from the first artist (headliner) of each show
+- Both modes automatically deduplicate shows, artists, and tracks to avoid duplicates in the playlist

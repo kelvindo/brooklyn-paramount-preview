@@ -47,7 +47,8 @@ def get_playlist_tracks(playlist_id: str) -> List[Dict]:
                     'uri': item['track']['uri'],
                     'name': item['track']['name'],
                     'artist': ', '.join([artist['name'] for artist in item['track']['artists']]),
-                    'album': item['track']['album']['name']
+                    'album': item['track']['album']['name'],
+                    'duration_ms': item['track']['duration_ms']
                 })
         
         # Get next page if exists
@@ -99,14 +100,21 @@ def play_next_track(tracks: List[Dict], track_index: int, device_id: str, random
             # Wait for the track to load
             time.sleep(1)
             
-            # Seek to a random position (10 seconds to 2 minutes into the song)
-            random_position = random.randint(10000, 120000)  # 10-120 seconds in milliseconds
+            # Calculate random position based on song length
+            # Skip first 10 seconds and last 10 seconds to avoid intro/outro
+            song_duration = selected_track['duration_ms']
+            min_position = int(song_duration * 0.10)  # 10%
+            max_position = int(song_duration * 0.75) # 75%
+            
+            random_position = random.randint(min_position, max_position)
             sp.seek_track(random_position, device_id=device_id)
             
             # Resume playback from the random position
             sp.start_playback(device_id=device_id)
             
-            print(f"Seeking to {random_position // 1000} seconds into the track")
+            song_length_sec = song_duration // 1000
+            random_position_sec = random_position // 1000
+            print(f"Seeking to {random_position_sec}s of {song_length_sec}s ({random_position_sec/song_length_sec*100:.1f}% through the song)")
         else:
             print("Playing from the beginning")
         

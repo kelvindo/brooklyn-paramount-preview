@@ -1,6 +1,6 @@
 import requests
 import json
-import csv 
+from datetime import datetime 
 
 graphql_endpoint = "https://api.livenation.com/graphql"
 
@@ -105,8 +105,6 @@ while True:
         response.raise_for_status()
         data = response.json()
 
-        # print(json.dumps(data, indent=2))  # Uncomment for debugging
-
         if "errors" in data:
             print(f"GraphQL Errors: {data['errors']}")
             break
@@ -120,11 +118,27 @@ while True:
                 title = event.get('name', 'Title Not Found')
                 date = event.get('event_date', 'Date Not Found')
                 ticket_url = event.get('url', 'Ticket URL Not Found')
+                raw_artists = event.get('artists', [])
+                
+                # Extract only name, image_url, and genre from each artist
+                artists = []
+                for artist in raw_artists:
+                    artist_data = {
+                        'name': artist.get('name', ''),
+                        'genre': artist.get('genre', ''),
+                        'image_url': ''
+                    }
+                    # Get image_url from first image if available
+                    images = artist.get('images', [])
+                    if images and len(images) > 0:
+                        artist_data['image_url'] = images[0].get('image_url', '')
+                    artists.append(artist_data)
 
                 show_data = {
                     'title': title,
                     'date': date,
-                    'ticket_url': ticket_url
+                    'ticket_url': ticket_url,
+                    'artists': artists
                 }
                 all_shows.append(show_data)
 
@@ -145,24 +159,14 @@ while True:
         break
 
 # After collecting all shows, before the print loop
-csv_filename = 'data/brooklyn_paramount_shows.csv'
+# Generate timestamp in YY-MM-DD format
+timestamp = datetime.now().strftime('%y-%m-%d')
+json_filename = f'data/raw/brooklyn_paramount_shows_{timestamp}.json'
 try:
-    with open(csv_filename, 'w', newline='', encoding='utf-8') as csvfile:
-        fieldnames = ['title', 'date', 'ticket_url']
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
-        writer.writeheader()
-        for show in all_shows:
-            writer.writerow(show)
+    with open(json_filename, 'w', encoding='utf-8') as jsonfile:
+        json.dump(all_shows, jsonfile, indent=2, ensure_ascii=False)
     
-    print(f"Data exported to {csv_filename}")
+    print(f"Data exported to {json_filename}")
+    print(f"Collected {len(all_shows)} shows.")
 except IOError as e:
-    print(f"Error writing to CSV file: {e}")
-
-for show in all_shows:
-    print(f"Title: {show['title']}")
-    print(f"Date: {show['date']}")
-    print(f"Ticket URL: {show['ticket_url']}")
-    print("-" * 20)
-
-print(f"Collected {len(all_shows)} shows.")
+    print(f"Error writing to JSON file: {e}")
