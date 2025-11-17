@@ -2,7 +2,8 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import time
 import random
-import csv
+import json
+from datetime import datetime
 from typing import List
 import os
 
@@ -19,17 +20,57 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
 ))
 
 
+def get_latest_artist_list_filename() -> str:
+    """
+    Get the latest artist_list JSON filename in format: artist_list_YY-MM-DD.json
+    If today's file doesn't exist, find the most recent one.
+    """
+    data_processed_dir = 'data/processed'
+    if not os.path.exists(data_processed_dir):
+        raise FileNotFoundError(f"Directory '{data_processed_dir}' does not exist.")
+    
+    today = datetime.now()
+    date_str = today.strftime('%y-%m-%d')
+    filename = f'artist_list_{date_str}.json'
+    filepath = os.path.join(data_processed_dir, filename)
+    
+    if os.path.exists(filepath):
+        return filepath
+    
+    # If today's file doesn't exist, try to find the most recent one
+    print(f"File {filename} not found. Searching for most recent artist_list JSON file...")
+    json_files = [f for f in os.listdir(data_processed_dir) if f.startswith('artist_list_') and f.endswith('.json')]
+    
+    if not json_files:
+        raise FileNotFoundError(f"No artist_list JSON files found in {data_processed_dir}")
+    
+    # Sort by filename (which includes date) and get the latest
+    json_files.sort(reverse=True)
+    latest_file = os.path.join(data_processed_dir, json_files[0])
+    print(f"Using file: {latest_file}")
+    return latest_file
+
+
 def load_artists(filename: str) -> List[str]:
-    """Loads artist names from a CSV file."""
+    """Loads unique artist names from a JSON file."""
     artists = []
+    seen_artists = set()
+    
     try:
         with open(filename, 'r', encoding='utf-8') as file:
-            reader = csv.DictReader(file)
-            for row in reader:
-                artists.append(row['Artist'])
+            artists_data = json.load(file)
+            for artist in artists_data:
+                artist_name = artist.get('name') or artist.get('search_term')
+                if artist_name and artist_name not in seen_artists:
+                    artists.append(artist_name)
+                    seen_artists.add(artist_name)
     except FileNotFoundError:
         print(f"Error: File '{filename}' not found.")
-        return []  # Return an empty list if the file doesn't exist
+        return []
+    except json.JSONDecodeError as e:
+        print(f"Error: Invalid JSON in file '{filename}': {e}")
+        return []
+    
     return artists
 
 def get_device_id():
@@ -114,9 +155,18 @@ def get_playback_position():
 
 def main():
     """Main function to control the song sampler."""
-    artists = load_artists('data/processed/show_title_to_artist.csv')
-    if not artists:
+    try:
+        artist_file = get_latest_artist_list_filename()
+        artists = load_artists(artist_file)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
         return
+    
+    if not artists:
+        print("No artists found.")
+        return
+    
+    print(f"Loaded {len(artists)} unique artists")
 
     random.shuffle(artists)
     device_id = get_device_id()

@@ -18,7 +18,7 @@ The pipeline helps music discovery by automatically creating playlists of artist
 ### Core Pipeline Scripts
 
 **Scraping**
-- `src/scraping/brooklyn_paramount_scraper.py` - Scrapes Brooklyn Paramount's GraphQL API to fetch upcoming show data including titles, dates, ticket URLs, and artist information
+- `src/scraping/brooklyn_paramount_scraper.py` - Scrapes Brooklyn Paramount's GraphQL API to fetch upcoming show data including titles, dates, ticket URLs, and artist information (name, image_url, genre)
 
 **Spotify Integration**
 - `src/spotify_integration/artist_scraper.py` - Searches Spotify for artists and saves their metadata (ID, name, popularity, followers, genres)
@@ -28,9 +28,9 @@ The pipeline helps music discovery by automatically creating playlists of artist
 **Data Processing**
 - `src/processing/combine_data.py` - Combines show, artist, and track data into a single unified JSON file
 
-### Supporting Files
-- `src/spotify_integration/spotify_client.py` - Spotify API client configuration
-- `src/scraping/utils.py` - Scraping utilities and helpers
+### Utility Scripts
+- `scripts/song_quiz.py` - Interactive song quiz utility using Spotify playlists
+- `scripts/test_playback.py` - Test script for Spotify playback functionality
 
 ## Data
 
@@ -51,7 +51,7 @@ data/
 
 **`data/raw/brooklyn_paramount_shows_YY-MM-DD.json`**
 - **Source**: Brooklyn Paramount GraphQL API
-- **Contains**: `title`, `date`, `ticket_url`, `artists` (array with `name`, `image_url`, `genre`)
+- **Contains**: Array of show objects with `title`, `date`, `ticket_url`, `artists` (array with `name`, `image_url`, `genre`)
 - **Purpose**: Raw show data from venue website with artist information
 
 **`data/processed/artist_list_YY-MM-DD.json`**
@@ -90,6 +90,20 @@ data/
    - Set redirect URI to `http://localhost:3000/callback`
 
 3. **Environment Variables**
+
+   **Option A: Export directly**
+   ```bash
+   export SPOTIFY_CLIENT_ID="your_client_id_here"
+   export SPOTIFY_CLIENT_SECRET="your_client_secret_here"
+   ```
+
+   **Option B: Use keys.env file**
+   ```bash
+   # Load from keys.env file (if it exists)
+   source keys.env
+   ```
+   
+   The `keys.env` file should contain:
    ```bash
    export SPOTIFY_CLIENT_ID="your_client_id_here"
    export SPOTIFY_CLIENT_SECRET="your_client_secret_here"
@@ -180,7 +194,7 @@ python src/spotify_integration/tracks_to_playlist_sync.py --first-artist-only
 - Check file counts between pipeline steps (all scripts use date-stamped filenames)
 - Verify artist names from scraped data match Spotify results
 - Confirm track IDs are valid Spotify URIs
-- All data files are now in JSON format for better structure preservation
+- All data files are in JSON format for better structure preservation
 - Combined data file provides a single source of truth for all show, artist, and track information
 
 **Playlist Options:**
